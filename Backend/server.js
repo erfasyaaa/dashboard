@@ -20,20 +20,77 @@ db.connect((err) => {
         return;
     }
     console.log('Terhubung ke database MySQL XAMPP.');
+    
+    // Menggunakan DELETE FROM agar lebih aman dari isu permission, dan log error jika gagal
+    db.query('DELETE FROM sensor_logs', (err) => {
+        if (err) {
+            console.error('Gagal membersihkan data lama di MySQL:', err.message);
+        } else {
+            console.log('Tabel sensor_logs berhasil dibersihkan (reset data lama).');
+            
+            // Inisialisasi 20 data awal (Mulai dari 2.5 meter)
+            let initTMA = 2.50; 
+            for (let i = 20; i > 0; i--) {
+                // Mayoritas di 2-3 meter
+                if (initTMA > 3.5) initTMA -= (Math.random() * 0.5); // Cepat surut jika tinggi
+                else initTMA += (Math.random() * 0.4 - 0.2); // Fluktuasi normal
+                
+                if (Math.random() < 0.15) initTMA += (Math.random() * 1.5); // 15% peluang hujan deras
+                
+                if (initTMA < 2.0) initTMA = 2.0 + Math.random() * 0.5; // Terendah 2.0 - 2.5 meter
+                if (initTMA > 5.0) initTMA = 5.0; // Maksimal tinggi 5.0 meter
+
+                // Curah Hujan dan Debit Air berbanding lurus dengan Ketinggian Air
+                let initDebit = (initTMA * 22) + (Math.random() * 5 - 2.5);
+                if (initDebit < 5) initDebit = 5 + Math.random() * 2;
+
+                let curahHujan = (initTMA * 12) + (Math.random() * 8 - 4);
+                if (curahHujan < 0) curahHujan = 0;
+                curahHujan = parseFloat(curahHujan.toFixed(2));
+                
+                let status = 'Aman';
+                if (initTMA >= 3.75) status = 'Awas';
+                else if (initTMA >= 2.50) status = 'Siaga';
+                else if (initTMA >= 1.25) status = 'Waspada';
+
+                // DATE_SUB digunakan untuk memundurkan jam/waktu agar urutannya pas
+                const query = 'INSERT INTO sensor_logs (ketinggian_air, debit_air, curah_hujan, status, created_at) VALUES (?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL ? SECOND))';
+                db.query(query, [initTMA.toFixed(2), initDebit.toFixed(2), curahHujan, status, i * 15]);
+            }
+            console.log('20 data riwayat awal berhasil ditambahkan!');
+        }
+    });
 });
 
-// SIMULASI SENSOR: Generate data dummy setiap 5 detik
-setInterval(() => {
-    // Math.random() untuk mengacak nilai sensor
-    const ketinggianAir = parseFloat((Math.random() * (5.0 - 0.5) + 0.5).toFixed(2)); // 0.5m - 5.0m
-    const debitAir = parseFloat((ketinggianAir * 12.5).toFixed(2)); // Simulasi rasio debit dibanding tinggi air
-    const curahHujan = parseFloat((Math.random() * (100 - 0) + 0).toFixed(2)); // 0mm - 100mm
+// Simpan state sementara (Mulai dari 2.5 meter)
+let currentTMA = 2.50; 
 
-    // Logika menentukan status kewaspadaan
+// SIMULASI SENSOR: Generate data dummy setiap 15 detik
+setInterval(() => {
+    if (currentTMA > 3.5) currentTMA -= (Math.random() * 0.5); // Cepat surut jika tinggi
+    else currentTMA += (Math.random() * 0.4 - 0.2); // Fluktuasi normal
+    
+    if (Math.random() < 0.15) currentTMA += (Math.random() * 1.5); // 15% peluang hujan deras
+    
+    if (currentTMA < 2.0) currentTMA = 2.0 + Math.random() * 0.5; // Terendah 2.0 - 2.5 meter
+    if (currentTMA > 5.0) currentTMA = 5.0;
+
+    let currentDebit = (currentTMA * 22) + (Math.random() * 5 - 2.5);
+    if (currentDebit < 5) currentDebit = 5 + Math.random() * 2;
+
+    const ketinggianAir = parseFloat(currentTMA.toFixed(2));
+    const debitAir = parseFloat(currentDebit.toFixed(2));
+    
+    let curahHujan = (currentTMA * 12) + (Math.random() * 8 - 4);
+    if (curahHujan < 0) curahHujan = 0;
+    curahHujan = parseFloat(curahHujan.toFixed(2));
+
     let status = 'Aman';
-    if (ketinggianAir > 4.0 || curahHujan > 75) {
+    if (ketinggianAir >= 3.75) {
+        status = 'Awas';
+    } else if (ketinggianAir >= 2.50) {
         status = 'Siaga';
-    } else if (ketinggianAir > 2.5 || curahHujan > 40) {
+    } else if (ketinggianAir >= 1.25) {
         status = 'Waspada';
     }
 
@@ -42,17 +99,18 @@ setInterval(() => {
         if (err) console.error('Gagal menyimpan data dummy:', err);
         else console.log(`Data Dummy Masuk -> Tinggi: ${ketinggianAir}m, Status: ${status}`);
     });
-}, 5000);
+}, 15000);
 
-// ENDPOINT: Ambil 15 data terakhir untuk grafik di Frontend
+// ENDPOINT: Ambil 50 data terakhir untuk grafik di Frontend
 app.get('/api/sensor-data', (req, res) => {
-    // Mengambil 15 data terbaru, lalu diurutkan dari yang terlama ke terbaru agar grafik mengalir ke kanan
+    // Mengambil 50 data terbaru, lalu diurutkan dari yang terlama ke terbaru agar grafik mengalir ke kanan
     const query = `
         SELECT * FROM (
             SELECT id, ketinggian_air, debit_air, curah_hujan, status, 
+                   DATE_FORMAT(created_at, '%d %b %Y') as tanggal,
                    DATE_FORMAT(created_at, '%H:%i:%s') as jam 
             FROM sensor_logs 
-            ORDER BY created_at DESC LIMIT 15
+            ORDER BY created_at DESC LIMIT 50
         ) AS subquery ORDER BY id ASC`;
 
     db.query(query, (err, results) => {

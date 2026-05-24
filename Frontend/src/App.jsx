@@ -1,190 +1,452 @@
-import React, { useState, useEffect } from 'react';
-import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import React, { useState, useEffect, useMemo } from 'react'; 
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line } from 'recharts'; 
+import cctvImage from './assets/sungai code.png'; 
 
-export default function App() {
-  const [dataLogs, setDataLogs] = useState([]);
-  const [latestData, setLatestData] = useState({
-    ketinggian_air: 0,
-    debit_air: 0,
-    curah_hujan: 0,
-    status: 'Mencari data...'
-  });
+export default function App() { 
+  const [dataLogs, setDataLogs] = useState([]); 
+  const [latestData, setLatestData] = useState({ 
+    ketinggian_air: 0.50, 
+    debit_air: 30.8, 
+    curah_hujan: 43.2, 
+    status: 'Aman' 
+  }); 
+  const [tableType, setTableType] = useState('realtime');
+  const [activePage, setActivePage] = useState('dashboard'); 
+  const [scale, setScale] = useState(1); 
 
-  // DATA SIMULASI UNTUK PERBANDINGAN TIAP HARI (7 Hari Terakhir)
-  const dataPerbandinganHarian = [
-    { hari: 'Senin', tinggi_rata2: 1.5, tinggi_maks: 2.1 },
-    { hari: 'Selasa', tinggi_rata2: 1.8, tinggi_maks: 2.5 },
-    { hari: 'Rabu', tinggi_rata2: 2.2, tinggi_maks: 3.4 },
-    { hari: 'Kamis', tinggi_rata2: 3.1, tinggi_maks: 4.5 },
-    { hari: 'Jumat', tinggi_rata2: 2.0, tinggi_maks: 2.8 },
-    { hari: 'Sabtu', tinggi_rata2: 1.4, tinggi_maks: 1.9 },
-    { hari: 'Minggu', tinggi_rata2: 1.6, tinggi_maks: 2.2 },
-  ];
+  // Data dummy 7 hari untuk grafik (biar baloknya tetap gendut & rapi)
+  const dataGrafikMingguan = [ 
+    { hari: 'Sen', tinggi_rata2: 2.2, tinggi_maks: 3.1 }, 
+    { hari: 'Sel', tinggi_rata2: 2.1, tinggi_maks: 2.5 }, 
+    { hari: 'Rab', tinggi_rata2: 2.5, tinggi_maks: 3.8 }, 
+    { hari: 'Kam', tinggi_rata2: 3.2, tinggi_maks: 4.8 }, 
+    { hari: 'Jum', tinggi_rata2: 2.8, tinggi_maks: 3.5 }, 
+    { hari: 'Sab', tinggi_rata2: 2.3, tinggi_maks: 2.9 }, 
+    { hari: 'Min', tinggi_rata2: 2.0, tinggi_maks: 2.4 }, 
+  ]; 
 
-  const fetchData = async () => {
-    try {
-      const response = await fetch('http://localhost:5000/api/sensor-data');
-      const data = await response.json();
-      
-      if (data.length > 0) {
-        setDataLogs(data);
-        setLatestData(data[data.length - 1]);
-      }
-    } catch (error) {
-      console.error('Gagal mengambil data dari API Backend:', error);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 3000);
-    return () => clearInterval(interval);
+  // Data dummy 30 hari untuk tabel riwayat saat diklik
+  const dataTabelBulanan = useMemo(() => {
+    return Array.from({ length: 30 }, (_, i) => {
+      let rata2 = Math.random() * 1.0 + 2.0; // Rata-rata normal 2 - 3 meter
+      let maks = rata2 + Math.random() * 1.0;
+      if (Math.random() < 0.15) maks += Math.random() * 2.0; // Sesekali spike karena hujan
+      if (maks > 5.0) maks = 5.0; // Batas mentok absolut 5.0 meter
+      return {
+        hari: `${i + 1}`,
+        tinggi_rata2: parseFloat(rata2.toFixed(2)),
+        tinggi_maks: parseFloat(maks.toFixed(2))
+      };
+    });
   }, []);
 
-  // Memperbaiki kontras warna teks dan menambahkan efek shadow glow ring
-  const getStatusColor = (status) => {
-    if (status === 'Siaga') {
-      return 'bg-gradient-to-br from-rose-500 to-red-600 text-white animate-pulse shadow-lg shadow-red-200 border border-red-400';
-    }
-    if (status === 'Waspada') {
-      return 'bg-gradient-to-br from-amber-400 to-amber-500 text-slate-900 shadow-lg shadow-amber-100 border border-amber-300';
-    }
-    return 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-lg shadow-emerald-200 border border-emerald-400';
+  const fetchData = async () => { 
+    try { 
+      const response = await fetch('http://localhost:5000/api/sensor-data'); 
+      const data = await response.json(); 
+      if (data.length > 0) { 
+        setDataLogs(data); 
+        const lastRecord = data[data.length - 1]; 
+        setLatestData({ 
+          ketinggian_air: lastRecord.ketinggian_air || 0.50, 
+          debit_air: lastRecord.debit_air || 30.8, 
+          curah_hujan: lastRecord.curah_hujan || 43.2, 
+          status: lastRecord.status || 'Aman' 
+        }); 
+      } 
+    } catch (error) { 
+      console.error('Gagal mengambil data dari API:', error); 
+    } 
+  }; 
+
+  useEffect(() => { 
+    fetchData(); 
+    const interval = setInterval(fetchData, 15000); 
+    return () => clearInterval(interval); 
+  }, []); 
+
+  useEffect(() => { 
+    const handleResize = () => { 
+      const scaleX = window.innerWidth / 1920; 
+      const scaleY = window.innerHeight / 1080; 
+      setScale(Math.min(scaleX, scaleY)); 
+    }; 
+    handleResize(); 
+    setTimeout(() => { 
+      window.dispatchEvent(new Event('resize')); 
+    }, 100); 
+    window.addEventListener('resize', handleResize); 
+    return () => window.removeEventListener('resize', handleResize); 
+  }, []); 
+
+  const getStatusTheme = () => { 
+    const status = latestData.status; 
+    // Hitung angle secara dinamis (0-180 derajat) berdasarkan ketinggian air maksimal 5.0 meter
+    const angle = Math.min(180, Math.max(0, (latestData.ketinggian_air / 5.0) * 180));
+    if (status === 'Awas') { 
+      return { color: '#ef4444', bg: 'bg-red-500', angle }; 
+    } else if (status === 'Siaga') { 
+      return { color: '#f97316', bg: 'bg-orange-500', angle }; 
+    } else if (status === 'Waspada') { 
+      return { color: '#eab308', bg: 'bg-yellow-500', angle }; 
+    } 
+    return { color: '#84cc16', bg: 'bg-lime-500', angle }; 
+  }; 
+
+  const currentTheme = getStatusTheme(); 
+
+  const customTooltipStyle = { 
+    backgroundColor: 'rgba(255, 255, 255, 0.95)', 
+    borderRadius: '8px', 
+    border: '1px solid #e2e8f0', 
+    padding: '6px' 
+  }; 
+
+  const CustomTooltip = ({ active, payload, label }) => { 
+    if (active && payload && payload.length) { 
+      return ( 
+        <div style={customTooltipStyle} className="text-[10px] font-bold text-slate-700 shadow-md"> 
+          <p className="text-slate-400 mb-0.5">{label}</p> 
+          {payload.map((entry, index) => ( 
+            <p key={index} style={{ color: entry.color }}> 
+              {entry.name}: {entry.value} 
+            </p> 
+          ))} 
+        </div> 
+      ); 
+    } 
+    return null; 
+  }; 
+
+  // Fungsi untuk berpindah ke halaman tabel saat grafik diklik
+  const handleChartClick = (e, type) => {
+    setTableType(type);
+    setActivePage('table');
   };
 
-  // Kustomisasi style untuk pop-up tooltip grafik agar lebih modern
-  const customTooltipStyle = {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: '12px',
-    border: 'none',
-    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -4px rgba(0, 0, 0, 0.05)',
-    padding: '10px'
-  };
+  return ( 
+    <div className="w-screen h-screen flex items-center justify-center bg-slate-900 overflow-auto"> 
+      <div 
+        className="w-[1920px] h-[1080px] relative bg-gradient-to-b from-cyan-700 via-teal-400 via-[73%] to-green-200 overflow-hidden shadow-2xl shrink-0" 
+        style={{ transform: `scale(${scale})`, transformOrigin: 'center' }} 
+      > 
+        <style> 
+          {`@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;700&display=swap');`} 
+        </style> 
 
-  return (
-   <div className="min-h-screen bg-sky-100 p-6 font-sans antialiased"> 
-    <div className="max-w-6xl mx-auto">
-        {/* HEADER */}
-        <div className="flex items-center justify-between mb-8 border-b border-slate-200/80 pb-5">
-          <div>
-            <h1 className="text-2xl font-black tracking-tight text-slate-900 bg-gradient-to-r from-blue-600 to-teal-500 bg-clip-text text-transparent">
-              Sistem Deteksi Dini & Mitigasi Banjir Real-time
-            </h1>
-          </div>
-          <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-full shadow-sm border border-slate-100 text-xs font-bold text-slate-600">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span> Live Monitoring
-          </div>
+        {/* ================= JUDUL UTAMA ================= */} 
+        <div className="w-[882.51px] h-96 left-[195px] top-[-87px] absolute text-center justify-center text-white text-6xl font-extrabold font-['Poppins'] [text-shadow:_0px_4px_4px_rgb(0_0_0_/_0.25)] flex items-center select-none"> 
+          Hydroguard Interactive 
+        </div> 
+
+        {/* ================= HEADER CONTROLS (SEARCH & MENU) ================= */} 
+        {/* Hamburger Menu Icon */}
+        <div className="w-9 h-6 left-[156.40px] top-[212px] absolute flex flex-col justify-between cursor-pointer">
+          <span className="w-full h-[5px] bg-white rounded-full"></span>
+          <span className="w-full h-[5px] bg-white rounded-full"></span>
+          <span className="w-full h-[5px] bg-white rounded-full"></span>
         </div>
+        
+        {/* Dashboard Search Bar Area */}
+        <div className="w-[808.85px] h-20 left-[231px] top-[184.15px] absolute bg-white/20 rounded-[43.76px] flex items-center justify-between px-10 border border-white/10 shadow-lg"> 
+          <span className="text-white text-xl font-bold font-['Poppins'] tracking-widest opacity-90">DASHBOARD SUNGAI CODE</span> 
+          {/* Sesuai Gambar image_65f3a3.png kaca pembesar figma baru */}
+          <div className="flex items-center justify-center cursor-pointer hover:scale-105 transition-transform">
+            <svg className="w-8 h-8 text-white font-black" fill="none" stroke="currentColor" strokeWidth="4" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </div>
+        </div> 
+        
+        {/* Avatar Icon */}
+        <div className="w-10 h-14 left-[1076.39px] top-[200.42px] absolute bg-cyan-700/50 border border-white/25 rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:scale-105 transition-transform overflow-hidden"> 
+          <svg className="w-6 h-6 text-white/80 mt-1" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5-3-8-3z"/></svg> 
+        </div> 
 
-        {/* KARTU INDIKATOR */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        {/* ================= PANEL UTAMA KIRI (CONTAINER GRAFIK) ================= */} 
+        <div className="w-[1153px] h-[715px] left-[81px] top-[321px] absolute bg-gradient-to-b from-white/20 to-sky-100/20 to-72% rounded-3xl shadow-[0px_4.606557369232178px_4.606557369232178px_0px_rgba(0,0,0,0.25)] backdrop-blur-sm"></div> 
+
+        {/* 1. CARD BLOCK: ANALISIS MINGGUAN BAR CHART */} 
+        <div className="w-[505.42px] h-[628.80px] left-[136.18px] top-[363px] absolute bg-gradient-to-b from-white to-sky-100 rounded-xl shadow-lg overflow-hidden flex flex-col justify-between pb-4"> 
+          <div className="w-[505.60px] h-5 bg-teal-400"></div> 
+          <div className="px-5 pt-3"> 
+            <div className="w-full text-black text-lg font-normal font-['Poppins'] leading-5 font-bold opacity-60"> 
+              Analisis Ketinggian dan Debit Air Mingguan
+            </div> 
+          </div> 
           
-          {/* Ketinggian Air */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100/80 relative overflow-hidden transition-all hover:shadow-md">
-            <div className="absolute top-0 left-0 h-1.5 w-full bg-blue-500"></div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Ketinggian Air</p>
-            <p className="text-4xl font-black text-slate-800 mt-3 tracking-tight">
-              {latestData.ketinggian_air} <span className="text-sm font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">m</span>
-            </p>
-          </div>
+          <div 
+            className="flex-1 px-6 mt-4 space-y-4 flex flex-col justify-center cursor-pointer hover:scale-[1.02] transition-transform"
+            onClick={() => handleChartClick(null, 'mingguan')}
+          > 
+            {/* Grafik Atas */} 
+            <div className="w-full h-44"> 
+              <ResponsiveContainer width="100%" height="100%"> 
+                <BarChart 
+                  data={dataGrafikMingguan} 
+                  barCategoryGap="20%" 
+                  margin={{ top: 10, right: 15, left: -15, bottom: 0 }}
+                > 
+                  <XAxis dataKey="hari" tickLine={false} axisLine={false} stroke="#000" fontSize={11} fontStyle="normal" fontFamily="Poppins" /> 
+                  <YAxis hide /> 
+                  <Tooltip content={<CustomTooltip />} /> 
+                  <Bar dataKey="tinggi_rata2" stackId="a" fill="#2dd4bf" maxBarSize={48} radius={[4, 4, 0, 0]} /> 
+                  <Bar dataKey="tinggi_maks" stackId="a" fill="#7c3aed" maxBarSize={48} radius={[4, 4, 0, 0]} /> 
+                </BarChart> 
+              </ResponsiveContainer> 
+            </div> 
 
-          {/* Debit Air */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100/80 relative overflow-hidden transition-all hover:shadow-md">
-            <div className="absolute top-0 left-0 h-1.5 w-full bg-teal-500"></div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Debit Air</p>
-            <p className="text-4xl font-black text-slate-800 mt-3 tracking-tight">
-              {latestData.debit_air} <span className="text-sm font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">m³/s</span>
-            </p>
-          </div>
+            {/* Grafik Bawah */} 
+            <div className="w-full h-44"> 
+              <ResponsiveContainer width="100%" height="100%"> 
+                <BarChart 
+                  data={dataGrafikMingguan} 
+                  barCategoryGap="20%" 
+                  margin={{ top: 10, right: 15, left: -15, bottom: 0 }}
+                > 
+                  <XAxis dataKey="hari" tickLine={false} axisLine={false} stroke="#000" fontSize={11} fontStyle="normal" fontFamily="Poppins" /> 
+                  <YAxis hide /> 
+                  <Tooltip content={<CustomTooltip />} /> 
+                  <Bar dataKey="tinggi_rata2" stackId="b" fill="#2dd4bf" maxBarSize={48} radius={[4, 4, 0, 0]} /> 
+                  <Bar dataKey="tinggi_maks" stackId="b" fill="#f87171" maxBarSize={48} radius={[4, 4, 0, 0]} /> 
+                </BarChart> 
+              </ResponsiveContainer> 
+            </div> 
+          </div> 
 
-          {/* Curah Hujan */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100/80 relative overflow-hidden transition-all hover:shadow-md">
-            <div className="absolute top-0 left-0 h-1.5 w-full bg-purple-500"></div>
-            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Curah Hujan</p>
-            <p className="text-4xl font-black text-slate-800 mt-3 tracking-tight">
-              {latestData.curah_hujan} <span className="text-sm font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">mm</span>
-            </p>
-          </div>
+          <div className="px-5 flex gap-6 items-center mb-2"> 
+            <div className="flex items-center gap-1.5"> 
+              <div className="w-5 h-4 bg-linear-221 from-red-400 to-orange-200 rounded-xs border border-black/10"></div> 
+              <span className="text-black text-[8.25px] font-semibold font-['Poppins']">Ketinggian Air (m)</span> 
+            </div> 
+            <div className="flex items-center gap-1.5"> 
+              <div className="w-5 h-4 bg-linear-221 from-violet-900 to-fuchsia-700 rounded-xs border border-black/10"></div> 
+              <span className="text-black text-[8.25px] font-semibold font-['Poppins']">Debit Air (m³/s)</span> 
+            </div> 
+          </div> 
+        </div> 
 
-          {/* Status Box Dengan Perbaikan Kontras Teks */}
-          <div className={`p-6 rounded-2xl flex flex-col justify-center items-center font-bold uppercase transition-all duration-500 ${getStatusColor(latestData.status)}`}>
-            <p className="text-[10px] font-extrabold tracking-widest uppercase opacity-75">Status Saat Ini</p>
-            <p className="text-3xl font-black mt-1 tracking-wider drop-shadow-sm">{latestData.status}</p>
-          </div>
-          
-        </div>
+        {/* 2. CARD BLOCK: INTENSITAS CURAH HUJAN */} 
+        <div 
+          className="w-[506.36px] h-72 left-[673px] top-[368.20px] absolute bg-gradient-to-b from-white via-white to-sky-100 rounded-xl shadow-lg overflow-hidden p-6 cursor-pointer hover:scale-105 transition-transform"
+          onClick={() => handleChartClick(null, 'curah_hujan')}
+        > 
+          <div className="w-[506.53px] h-5 left-0 top-0 absolute bg-teal-600"></div> 
+          <div className="text-black text-lg font-normal font-['Poppins'] leading-4 opacity-60">Intensitas Curah Hujan</div> 
+          <div className="text-black text-7xl font-bold font-['Poppins'] mt-4">{latestData.curah_hujan.toString().replace('.', ',')}</div> 
+          <div className="text-black text-2xl font-bold font-['Inter'] mt-1 flex items-center gap-2"> 
+            Naik 20% 
+            <div className="w-9 h-6 bg-red-400 rounded flex items-center justify-center text-white text-sm">▲</div> 
+          </div> 
+          <div className="text-black text-lg font-normal font-['Inter'] mt-8">Curah Hujan Perhari</div> 
+          <div className="w-full h-4 bg-teal-400 rounded-full overflow-hidden mt-2 relative"> 
+            <div className="absolute left-0 top-0 h-full w-[72%] bg-gradient-to-r from-red-400 to-orange-200 rounded-full"></div> 
+          </div> 
+        </div> 
 
-        {/* GRID GRAFIK UTAMA */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          
-          {/* 1. GRAFIK DEBIT AIR (DIUBAH JADI AREA CHART BIAR ADA EFEK GLOWING GRADIENT) */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100/80">
-            <h2 className="text-xs font-black text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-teal-500 shadow-sm"></span> Tren Debit Air Real-time
-            </h2>
-            <div className="w-full h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={dataLogs} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorDebit" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.2}/>
-                      <stop offset="95%" stopColor="#14b8a6" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="jam" stroke="#94a3b8" fontSize={11} tickLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} />
-                  <Tooltip contentStyle={customTooltipStyle} />
-                  <Legend iconType="circle" />
-                  <Area type="monotone" dataKey="debit_air" name="Debit Air (m³/s)" stroke="#14b8a6" strokeWidth={3} fillOpacity={1} fill="url(#colorDebit)" />
-                </AreaChart>
-              </ResponsiveContainer>
+        {/* 3. CARD BLOCK: TREN DEBIT AIR REAL-TIME */} 
+        <div 
+          className="w-[506.36px] h-80 left-[673px] top-[663.02px] absolute bg-gradient-to-b from-white to-sky-100 rounded-xl shadow-lg overflow-hidden p-6 cursor-pointer hover:scale-105 transition-transform"
+          onClick={() => handleChartClick(null, 'debit')}
+        > 
+          <div className="w-[506.53px] h-5 left-0 top-0 absolute bg-cyan-700"></div> 
+          <div className="text-black text-lg font-normal font-['Poppins'] leading-4 opacity-60 mb-2">Tren Debit Air Real-Time</div> 
+          <div className="w-full h-48 relative mt-2"> 
+            <ResponsiveContainer width="100%" height="100%"> 
+              <LineChart data={dataLogs} margin={{ top: 15, right: 15, left: -30, bottom: 15 }}> 
+                <defs> 
+                  <linearGradient id="curveGradient" x1="0" y1="0" x2="1" y2="0"> 
+                    <stop offset="0%" stopColor="#4c1d95" /> 
+                    <stop offset="40%" stopColor="#a855f7" /> 
+                    <stop offset="70%" stopColor="#f43f5e" /> 
+                    <stop offset="100%" stopColor="#fdba74" /> 
+                  </linearGradient> 
+                </defs> 
+                <CartesianGrid stroke="#000000" strokeWidth={1.5} horizontal={false} opacity={0.8} /> 
+                <XAxis dataKey="jam" tickLine={false} axisLine={false} stroke="#000" fontSize={8.44} fontStyle="bold" fontFamily="Inter" /> 
+                <YAxis hide domain={[0, 70]} /> 
+                <Tooltip content={<CustomTooltip />} /> 
+                <Line type="monotone" dataKey="debit_air" stroke="url(#curveGradient)" strokeWidth={3.5} dot={false} /> 
+              </LineChart> 
+            </ResponsiveContainer> 
+          </div> 
+        </div> 
+
+        {/* ================= PANEL UTAMA KANAN (MONITORING PANEL LOKASI) ================= */} 
+        <div className="w-[571.96px] h-[980.05px] left-[1262.04px] top-[56.95px] absolute bg-gradient-to-b from-white to-sky-100 rounded-3xl shadow-2xl border border-white p-6 flex flex-col justify-between"> 
+          {/* CONTAINER PREVIEW IMAGE SUNGAI */} 
+          <div className="relative w-[498.77px] h-96 rounded-xl overflow-hidden shadow-md mx-auto"> 
+            <img className="w-full h-full object-cover" src={cctvImage} alt="Sungai Code" /> 
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-6"> 
+              <div className="text-white text-3xl font-bold font-['Poppins'] leading-tight">Sungai Code, Sinduadi</div> 
+              <div className="text-white text-xl font-semibold font-['Poppins'] mt-1">Minggu, 24 Mei 2026</div> 
+            </div> 
+          </div> 
+
+          {/* AREA METER INDIKATOR GAUGE */} 
+          <div 
+            className="flex flex-col items-center justify-center flex-1 py-6 relative cursor-pointer hover:scale-105 transition-transform"
+            onClick={() => handleChartClick(null, 'realtime')}
+          > 
+            <div className="relative w-80 h-40 overflow-hidden flex items-end justify-center"> 
+              <svg className="w-full h-full absolute top-0 left-0" viewBox="0 0 100 50"> 
+                <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="url(#conicGaugeGradient)" strokeWidth="10" strokeLinecap="round" /> 
+                <defs> 
+                  <linearGradient id="conicGaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%"> 
+                    <stop offset="0%" stopColor="#84cc16" /> 
+                    <stop offset="33%" stopColor="#eab308" /> 
+                    <stop offset="66%" stopColor="#f97316" /> 
+                    <stop offset="100%" stopColor="#ef4444" /> 
+                  </linearGradient> 
+                </defs> 
+              </svg> 
+              {/* Jarum Pointer Utama Dinamis sesuai GetStatusTheme */} 
+              <div 
+                className="absolute w-[74px] h-1.5 bg-black rounded-full origin-right transition-transform duration-1000 flex items-center" 
+                style={{ transform: `rotate(${currentTheme.angle}deg)`, right: '50%', bottom: '0px' }} 
+              >
+                {/* Desain Kepala Anak Panah Sesuai Gambar Ketiga */}
+                <div className="w-0 h-0 border-t-[5px] border-t-transparent border-b-[5px] border-b-transparent border-r-[12px] border-r-black absolute left-0" style={{ stroke: currentTheme.color }}></div>
+              </div> 
+              <div className="size-3.5 bg-black rounded-full absolute bottom-[-4px] z-10"></div> 
+            </div> 
+            {/* Teks Range Skala Ukur */}
+            <div className="w-80 flex justify-between text-base font-semibold font-['Poppins'] text-black mt-2 px-1"> 
+              <span>0</span> <span>1.25</span> <span>2.5</span> <span>3.75</span> <span>5.0</span> 
+            </div> 
+            {/* Tombol Kotak Status Dinamis */} 
+            <div className={`w-[384px] h-20 ${currentTheme.bg} rounded-xl flex items-center justify-center shadow-md mt-6 transition-colors duration-500`}> 
+              <span className="text-white text-2xl font-bold font-['Poppins'] tracking-wider"> 
+                {latestData.status === 'Mencari data...' ? 'Aman' : latestData.status} 
+              </span> 
+            </div> 
+          </div> 
+
+          {/* ================= 3 PANEL METRIK MINI DI BAGIAN BAWAH ================= */} 
+          <div className="grid grid-cols-3 gap-4 px-2 justify-items-center"> 
+            {/* Card Ketinggian */} 
+            <div 
+              className="w-36 h-32 bg-white border border-slate-100 rounded-xl shadow-sm relative overflow-hidden flex flex-col justify-between p-3 pb-2 text-left cursor-pointer hover:scale-105 transition-transform"
+              onClick={() => handleChartClick(null, 'ketinggian')}
+            > 
+              <div className="w-36 h-5 bg-teal-400 absolute top-0 left-0"></div> 
+              <span className="text-black text-lg font-normal font-['Poppins'] leading-tight opacity-60 mt-4 block">Ketinggian Air</span> 
+              <div className="w-full flex items-baseline justify-between mt-1 gap-1">
+                <span className="text-3xl font-semibold font-['Poppins'] text-black tracking-tighter truncate">{latestData.ketinggian_air.toString().replace('.', ',')}</span> 
+                <span className="text-black text-sm font-semibold font-['Poppins'] shrink-0">m</span> 
+              </div>
+            </div> 
+
+            {/* Card Debit */} 
+            <div 
+              className="w-36 h-32 bg-white border border-slate-100 rounded-xl shadow-sm relative overflow-hidden flex flex-col justify-between p-3 pb-2 text-left cursor-pointer hover:scale-105 transition-transform"
+              onClick={() => handleChartClick(null, 'debit')}
+            > 
+              <div className="w-36 h-5 bg-teal-600 absolute top-0 left-0"></div> 
+              <span className="text-black text-base font-normal font-['Poppins'] leading-tight opacity-60 mt-4 block">Debit Air</span> 
+              <div className="w-full flex items-baseline justify-between mt-1 gap-1">
+                <span className="text-3xl font-semibold font-['Poppins'] text-black tracking-tighter truncate">{latestData.debit_air.toString().replace('.', ',')}</span> 
+                <span className="text-black text-sm font-semibold font-['Poppins'] shrink-0">m³/s</span> 
+              </div>
+            </div> 
+
+            {/* Card Hujan */} 
+            <div 
+              className="w-36 h-32 bg-white border border-slate-100 rounded-xl shadow-sm relative overflow-hidden flex flex-col justify-between p-3 pb-2 text-left cursor-pointer hover:scale-105 transition-transform"
+              onClick={() => handleChartClick(null, 'curah_hujan')}
+            > 
+              <div className="w-36 h-5 bg-cyan-700 absolute top-0 left-0"></div> 
+              <span className="text-black text-base font-normal font-['Poppins'] leading-tight opacity-60 mt-4 block">Curah Hujan</span> 
+              <div className="w-full flex items-baseline justify-between mt-1 gap-1">
+                <span className="text-3xl font-semibold font-['Poppins'] text-black tracking-tighter truncate">{latestData.curah_hujan.toString().replace('.', ',')}</span> 
+                <span className="text-black text-sm font-semibold font-['Poppins'] shrink-0">mm</span> 
+              </div>
+            </div> 
+          </div> 
+        </div> 
+
+        {/* ================= HALAMAN TABEL DETAIL ================= */} 
+        {activePage === 'table' && (
+          <div className="absolute inset-0 z-50 bg-[#01798B] flex flex-col p-16 animate-in fade-in duration-200">
+            {/* Bagian Header Tabel */}
+            <div className="flex justify-between items-center mb-8">
+               <div className="flex items-center gap-4">
+                 <div className="w-3 h-12 bg-teal-400 rounded-full"></div>
+                 <h1 className="text-5xl font-extrabold text-white font-['Poppins'] drop-shadow-md">
+                   Data Riwayat {tableType === 'mingguan' ? '30 Hari Terakhir' : 
+                                 tableType === 'realtime' ? 'Keseluruhan (Real-Time)' : 
+                                 tableType === 'ketinggian' ? 'Ketinggian Air' :
+                                 tableType === 'debit' ? 'Debit Air' : 
+                                 'Curah Hujan'}
+                 </h1>
+               </div>
+               <button
+                 onClick={() => setActivePage('dashboard')}
+                 className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-full font-bold font-['Poppins'] backdrop-blur border border-white/20 transition-all shadow-lg flex items-center gap-2"
+               >
+                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                 Kembali ke Dashboard
+               </button>
+            </div>
+
+            {/* Container Tabel dengan Scroll */}
+            <div className="flex-1 bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+               <div className="overflow-y-auto flex-1 p-0">
+                 <table className="w-full text-left border-collapse font-['Poppins']">
+                   <thead className="sticky top-0 bg-teal-600 shadow-md z-10">
+                     <tr className="text-white text-xl">
+                       {tableType === 'mingguan' ? (
+                         <>
+                           <th className="p-6 font-semibold">Hari</th>
+                           <th className="p-6 font-semibold">Ketinggian Rata-rata (m)</th>
+                           <th className="p-6 font-semibold">Ketinggian Maksimal (m)</th>
+                         </>
+                       ) : (
+                         <>
+                           <th className="p-6 font-semibold">No</th>
+                           <th className="p-6 font-semibold">Tanggal</th>
+                           <th className="p-6 font-semibold">Jam</th>
+                           {(tableType === 'realtime' || tableType === 'ketinggian') && <th className="p-6 font-semibold">Ketinggian (m)</th>}
+                           {(tableType === 'realtime' || tableType === 'debit') && <th className="p-6 font-semibold">Debit Air (m³/s)</th>}
+                           {(tableType === 'realtime' || tableType === 'curah_hujan') && <th className="p-6 font-semibold">Curah Hujan (mm)</th>}
+                           <th className="p-6 font-semibold">Status</th>
+                         </>
+                       )}
+                     </tr>
+                   </thead>
+                   <tbody>
+                     {tableType === 'mingguan' ? (
+                      dataTabelBulanan.map((row, idx) => (
+                         <tr key={idx} className="border-b border-slate-200 hover:bg-teal-50 transition-colors text-lg text-slate-700">
+                           <td className="p-6 font-bold">{row.hari}</td>
+                           <td className="p-6">{row.tinggi_rata2}</td>
+                           <td className="p-6">{row.tinggi_maks}</td>
+                         </tr>
+                       ))
+                     ) : (
+                       [...dataLogs].reverse().map((log, idx) => (
+                         <tr key={idx} className="border-b border-slate-200 hover:bg-teal-50 transition-colors text-lg text-slate-700">
+                           <td className="p-6 font-bold text-slate-400">{idx + 1}</td>
+                           <td className="p-6">{log.tanggal}</td>
+                           <td className="p-6">{log.jam}</td>
+                           {(tableType === 'realtime' || tableType === 'ketinggian') && <td className="p-6 font-semibold text-teal-600">{log.ketinggian_air}</td>}
+                           {(tableType === 'realtime' || tableType === 'debit') && <td className="p-6 font-semibold text-violet-600">{log.debit_air}</td>}
+                           {(tableType === 'realtime' || tableType === 'curah_hujan') && <td className="p-6 font-semibold text-sky-600">{log.curah_hujan}</td>}
+                           <td className="p-6">
+                             <span className={`px-4 py-2 rounded-full text-sm font-bold text-white ${log.status === 'Awas' ? 'bg-red-500' : log.status === 'Siaga' ? 'bg-orange-500' : log.status === 'Waspada' ? 'bg-yellow-500' : 'bg-lime-500'}`}>
+                               {log.status}
+                             </span>
+                           </td>
+                         </tr>
+                       ))
+                     )}
+                   </tbody>
+                 </table>
+               </div>
             </div>
           </div>
-
-          {/* 2. GRAFIK CURAH HUJAN (MODERN BAR CHART) */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100/80">
-            <h2 className="text-xs font-black text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-purple-500 shadow-sm"></span> Intensitas Curah Hujan
-            </h2>
-            <div className="w-full h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dataLogs} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="jam" stroke="#94a3b8" fontSize={11} tickLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} />
-                  <Tooltip contentStyle={customTooltipStyle} />
-                  <Legend iconType="circle" />
-                  <Bar dataKey="curah_hujan" name="Curah Hujan (mm)" fill="#c084fc" radius={[6, 6, 0, 0]} maxBarSize={30} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-        </div>
-
-        {/* 3. GRAFIK PERBANDINGAN MINGGUAN */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100/80">
-          <h2 className="text-xs font-black text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-blue-600 shadow-sm"></span> Analisis Ketinggian Air Mingguan
-          </h2>
-          <p className="text-[11px] font-medium text-slate-400 mb-4">*Data komparasi rata-rata vs tingkat maksimum 7 hari terakhir</p>
-          <div className="w-full h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dataPerbandinganHarian} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                <XAxis dataKey="hari" stroke="#94a3b8" fontSize={11} tickLine={false} />
-                <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} />
-                <Tooltip contentStyle={customTooltipStyle} />
-                <Legend iconType="circle" />
-                <Bar dataKey="tinggi_rata2" name="Tinggi Rata-rata (m)" fill="#93c5fd" radius={[6, 6, 0, 0]} maxBarSize={25} />
-                <Bar dataKey="tinggi_maks" name="Tinggi Maksimum (m)" fill="#2563eb" radius={[6, 6, 0, 0]} maxBarSize={25} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  );
+        )}
+      </div> 
+    </div> 
+  ); 
 }
