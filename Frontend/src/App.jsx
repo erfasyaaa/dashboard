@@ -5,7 +5,7 @@ import cctvImage from './assets/sungai code.png';
 export default function App() { 
   const [dataLogs, setDataLogs] = useState([]); 
   const [latestData, setLatestData] = useState({ 
-    ketinggian_air: 0.50, 
+    ketinggian_air: 2.15, 
     debit_air: 30.8, 
     curah_hujan: 43.2, 
     status: 'Aman' 
@@ -27,15 +27,35 @@ export default function App() {
 
   // Data dummy 30 hari untuk tabel riwayat saat diklik
   const dataTabelBulanan = useMemo(() => {
+    const today = new Date();
     return Array.from({ length: 30 }, (_, i) => {
-      let rata2 = Math.random() * 1.0 + 2.0; // Rata-rata normal 2 - 3 meter
+      let rata2 = Math.random() * 1.0 + 2.0; // Rata-rata normal 2.0 - 3.0 meter
       let maks = rata2 + Math.random() * 1.0;
-      if (Math.random() < 0.15) maks += Math.random() * 2.0; // Sesekali spike karena hujan
-      if (maks > 5.0) maks = 5.0; // Batas mentok absolut 5.0 meter
+      if (Math.random() < 0.10) maks += Math.random() * 2.5; // Sesekali spike karena hujan (bisa Siaga/Awas)
+      if (maks > 6.0) maks = 6.0; // Batas mentok absolut 6.0 meter
+      
+      let status = 'Aman';
+      if (maks >= 5.00) status = 'Awas';
+      else if (maks >= 4.00) status = 'Siaga';
+      else if (maks >= 3.00) status = 'Waspada';
+
+      let rataDebit = (rata2 * 22) + (Math.random() * 5 - 2.5);
+      if (rataDebit < 5) rataDebit = 5 + Math.random() * 2;
+      
+      let rataHujan = (rata2 * 12) + (Math.random() * 8 - 4);
+      if (rataHujan < 0) rataHujan = 0;
+
+      const d = new Date(today);
+      d.setDate(today.getDate() - (29 - i));
+      const tanggalFormat = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+
       return {
-        hari: `${i + 1}`,
+        hari: tanggalFormat,
         tinggi_rata2: parseFloat(rata2.toFixed(2)),
-        tinggi_maks: parseFloat(maks.toFixed(2))
+        tinggi_maks: parseFloat(maks.toFixed(2)),
+        debit_rata2: parseFloat(rataDebit.toFixed(2)),
+        curah_hujan: parseFloat(rataHujan.toFixed(2)),
+        status: status
       };
     });
   }, []);
@@ -48,14 +68,56 @@ export default function App() {
         setDataLogs(data); 
         const lastRecord = data[data.length - 1]; 
         setLatestData({ 
-          ketinggian_air: lastRecord.ketinggian_air || 0.50, 
+          ketinggian_air: lastRecord.ketinggian_air || 2.15, 
           debit_air: lastRecord.debit_air || 30.8, 
           curah_hujan: lastRecord.curah_hujan || 43.2, 
           status: lastRecord.status || 'Aman' 
         }); 
       } 
     } catch (error) { 
-      console.error('Gagal mengambil data dari API:', error); 
+      console.warn('Backend tidak terhubung, menjalankan simulasi indikator lokal...'); 
+      
+      setLatestData(prev => {
+        let newTMA = prev.ketinggian_air;
+        
+        // Mayoritas di 2.0 - 4.0 meter (Aman/Waspada)
+        if (newTMA > 3.5) newTMA -= (Math.random() * 0.5); 
+        else newTMA += (Math.random() * 0.4 - 0.2); 
+        
+        if (Math.random() < 0.10) newTMA += (Math.random() * 1.5); // Peluang Siaga
+        if (Math.random() < 0.05) newTMA += (Math.random() * 2.0); // Peluang Awas
+        
+        if (newTMA < 2.0) newTMA = 2.0 + Math.random() * 0.2; // JANGAN DI BAWAH 2 METER
+        if (newTMA > 6.0) newTMA = 6.0;
+
+        let status = 'Aman';
+        if (newTMA >= 5.00) status = 'Awas';
+        else if (newTMA >= 4.00) status = 'Siaga';
+        else if (newTMA >= 3.00) status = 'Waspada';
+
+        let newDebit = (newTMA * 22) + (Math.random() * 5 - 2.5);
+        if (newDebit < 5) newDebit = 5 + Math.random() * 2;
+        
+        let newHujan = (newTMA * 12) + (Math.random() * 8 - 4);
+        if (newHujan < 0) newHujan = 0;
+
+        const newData = {
+          ketinggian_air: parseFloat(newTMA.toFixed(2)),
+          debit_air: parseFloat(newDebit.toFixed(2)),
+          curah_hujan: parseFloat(newHujan.toFixed(2)),
+          status: status
+        };
+
+        setDataLogs(prevLogs => {
+          const now = new Date();
+          const jam = now.toLocaleTimeString('id-ID', { hour12: false });
+          const newLog = { ...newData, jam, tanggal: now.toLocaleDateString('id-ID') };
+          const updatedLogs = [...prevLogs, newLog];
+          return updatedLogs.length > 50 ? updatedLogs.slice(updatedLogs.length - 50) : updatedLogs;
+        });
+
+        return newData;
+      });
     } 
   }; 
 
@@ -81,8 +143,8 @@ export default function App() {
 
   const getStatusTheme = () => { 
     const status = latestData.status; 
-    // Hitung angle secara dinamis (0-180 derajat) berdasarkan ketinggian air maksimal 5.0 meter
-    const angle = Math.min(180, Math.max(0, (latestData.ketinggian_air / 5.0) * 180));
+    // Hitung angle secara dinamis (0-180 derajat) berdasarkan ketinggian air maksimal 6.0 meter
+    const angle = Math.min(180, Math.max(0, (latestData.ketinggian_air / 6.0) * 180));
     if (status === 'Awas') { 
       return { color: '#ef4444', bg: 'bg-red-500', angle }; 
     } else if (status === 'Siaga') { 
@@ -240,7 +302,7 @@ export default function App() {
           </div> 
           <div className="text-black text-lg font-normal font-['Inter'] mt-8">Curah Hujan Perhari</div> 
           <div className="w-full h-4 bg-teal-400 rounded-full overflow-hidden mt-2 relative"> 
-            <div className="absolute left-0 top-0 h-full w-[72%] bg-gradient-to-r from-red-400 to-orange-200 rounded-full"></div> 
+            <div className="absolute left-0 top-0 h-full bg-gradient-to-r from-red-400 to-orange-200 rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, (latestData.curah_hujan / 100) * 100)}%` }}></div> 
           </div> 
         </div> 
 
@@ -294,9 +356,9 @@ export default function App() {
                 <defs> 
                   <linearGradient id="conicGaugeGradient" x1="0%" y1="0%" x2="100%" y2="0%"> 
                     <stop offset="0%" stopColor="#84cc16" /> 
-                    <stop offset="33%" stopColor="#eab308" /> 
+                    <stop offset="50%" stopColor="#eab308" /> 
                     <stop offset="66%" stopColor="#f97316" /> 
-                    <stop offset="100%" stopColor="#ef4444" /> 
+                    <stop offset="83%" stopColor="#ef4444" /> 
                   </linearGradient> 
                 </defs> 
               </svg> 
@@ -312,11 +374,11 @@ export default function App() {
             </div> 
             {/* Teks Range Skala Ukur */}
             <div className="w-80 flex justify-between text-base font-semibold font-['Poppins'] text-black mt-2 px-1"> 
-              <span>0</span> <span>1.25</span> <span>2.5</span> <span>3.75</span> <span>5.0</span> 
+              <span>0</span> <span>1.5</span> <span>3.0</span> <span>4.5</span> <span>6.0</span> 
             </div> 
             {/* Tombol Kotak Status Dinamis */} 
-            <div className={`w-[384px] h-20 ${currentTheme.bg} rounded-xl flex items-center justify-center shadow-md mt-6 transition-colors duration-500`}> 
-              <span className="text-white text-2xl font-bold font-['Poppins'] tracking-wider"> 
+            <div key={latestData.status} className={`w-[384px] h-20 ${currentTheme.bg} rounded-xl flex items-center justify-center shadow-md mt-6 transition-colors duration-500 animate-in fade-in zoom-in duration-500`}> 
+              <span className="text-white text-2xl font-bold font-['Poppins'] tracking-wider drop-shadow-md"> 
                 {latestData.status === 'Mencari data...' ? 'Aman' : latestData.status} 
               </span> 
             </div> 
@@ -332,7 +394,7 @@ export default function App() {
               <div className="w-36 h-5 bg-teal-400 absolute top-0 left-0"></div> 
               <span className="text-black text-lg font-normal font-['Poppins'] leading-tight opacity-60 mt-4 block">Ketinggian Air</span> 
               <div className="w-full flex items-baseline justify-between mt-1 gap-1">
-                <span className="text-3xl font-semibold font-['Poppins'] text-black tracking-tighter truncate">{latestData.ketinggian_air.toString().replace('.', ',')}</span> 
+                <span key={latestData.ketinggian_air} className="text-3xl font-semibold font-['Poppins'] text-black tracking-tighter truncate animate-in fade-in slide-in-from-bottom-2 duration-500">{latestData.ketinggian_air.toString().replace('.', ',')}</span> 
                 <span className="text-black text-sm font-semibold font-['Poppins'] shrink-0">m</span> 
               </div>
             </div> 
@@ -345,7 +407,7 @@ export default function App() {
               <div className="w-36 h-5 bg-teal-600 absolute top-0 left-0"></div> 
               <span className="text-black text-base font-normal font-['Poppins'] leading-tight opacity-60 mt-4 block">Debit Air</span> 
               <div className="w-full flex items-baseline justify-between mt-1 gap-1">
-                <span className="text-3xl font-semibold font-['Poppins'] text-black tracking-tighter truncate">{latestData.debit_air.toString().replace('.', ',')}</span> 
+                <span key={latestData.debit_air} className="text-3xl font-semibold font-['Poppins'] text-black tracking-tighter truncate animate-in fade-in slide-in-from-bottom-2 duration-500">{latestData.debit_air.toString().replace('.', ',')}</span> 
                 <span className="text-black text-sm font-semibold font-['Poppins'] shrink-0">m³/s</span> 
               </div>
             </div> 
@@ -358,7 +420,7 @@ export default function App() {
               <div className="w-36 h-5 bg-cyan-700 absolute top-0 left-0"></div> 
               <span className="text-black text-base font-normal font-['Poppins'] leading-tight opacity-60 mt-4 block">Curah Hujan</span> 
               <div className="w-full flex items-baseline justify-between mt-1 gap-1">
-                <span className="text-3xl font-semibold font-['Poppins'] text-black tracking-tighter truncate">{latestData.curah_hujan.toString().replace('.', ',')}</span> 
+                <span key={latestData.curah_hujan} className="text-3xl font-semibold font-['Poppins'] text-black tracking-tighter truncate animate-in fade-in slide-in-from-bottom-2 duration-500">{latestData.curah_hujan.toString().replace('.', ',')}</span> 
                 <span className="text-black text-sm font-semibold font-['Poppins'] shrink-0">mm</span> 
               </div>
             </div> 
@@ -397,9 +459,12 @@ export default function App() {
                      <tr className="text-white text-xl">
                        {tableType === 'mingguan' ? (
                          <>
-                           <th className="p-6 font-semibold">Hari</th>
+                           <th className="p-6 font-semibold">Tanggal</th>
                            <th className="p-6 font-semibold">Ketinggian Rata-rata (m)</th>
-                           <th className="p-6 font-semibold">Ketinggian Maksimal (m)</th>
+                           <th className="p-6 font-semibold">Ketinggian Maks. (m)</th>
+                           <th className="p-6 font-semibold">Debit Rata-rata (m³/s)</th>
+                           <th className="p-6 font-semibold">Curah Hujan (mm)</th>
+                           <th className="p-6 font-semibold">Status (Maks)</th>
                          </>
                        ) : (
                          <>
@@ -418,9 +483,16 @@ export default function App() {
                      {tableType === 'mingguan' ? (
                       dataTabelBulanan.map((row, idx) => (
                          <tr key={idx} className="border-b border-slate-200 hover:bg-teal-50 transition-colors text-lg text-slate-700">
-                           <td className="p-6 font-bold">{row.hari}</td>
+                           <td className="p-6 font-bold text-slate-600 whitespace-nowrap">{row.hari}</td>
                            <td className="p-6">{row.tinggi_rata2}</td>
-                           <td className="p-6">{row.tinggi_maks}</td>
+                           <td className="p-6 font-semibold text-teal-600">{row.tinggi_maks}</td>
+                           <td className="p-6 font-semibold text-violet-600">{row.debit_rata2}</td>
+                           <td className="p-6 font-semibold text-sky-600">{row.curah_hujan}</td>
+                           <td className="p-6">
+                             <span className={`px-4 py-2 rounded-full text-sm font-bold text-white shadow-sm ${row.status === 'Awas' ? 'bg-red-500' : row.status === 'Siaga' ? 'bg-orange-500' : row.status === 'Waspada' ? 'bg-yellow-500' : 'bg-lime-500'}`}>
+                               {row.status}
+                             </span>
+                           </td>
                          </tr>
                        ))
                      ) : (

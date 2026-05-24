@@ -28,17 +28,18 @@ db.connect((err) => {
         } else {
             console.log('Tabel sensor_logs berhasil dibersihkan (reset data lama).');
             
-            // Inisialisasi 20 data awal (Mulai dari 2.5 meter)
-            let initTMA = 2.50; 
+            // Inisialisasi 20 data awal
+            let initTMA = 2.5; 
             for (let i = 20; i > 0; i--) {
-                // Mayoritas di 2-3 meter
+                // Mayoritas di 2.0 - 4.0 meter
                 if (initTMA > 3.5) initTMA -= (Math.random() * 0.5); // Cepat surut jika tinggi
                 else initTMA += (Math.random() * 0.4 - 0.2); // Fluktuasi normal
                 
-                if (Math.random() < 0.15) initTMA += (Math.random() * 1.5); // 15% peluang hujan deras
+                if (Math.random() < 0.10) initTMA += (Math.random() * 1.5); // 10% peluang hujan deras (jarang)
+                if (Math.random() < 0.05) initTMA += (Math.random() * 2.0); // 5% peluang sangat deras (Siaga/Awas)
                 
-                if (initTMA < 2.0) initTMA = 2.0 + Math.random() * 0.5; // Terendah 2.0 - 2.5 meter
-                if (initTMA > 5.0) initTMA = 5.0; // Maksimal tinggi 5.0 meter
+                if (initTMA < 2.0) initTMA = 2.0 + Math.random() * 0.2; // JANGAN DI BAWAH 2 METER
+                if (initTMA > 6.0) initTMA = 6.0; // Maksimal tinggi 6.0 meter
 
                 // Curah Hujan dan Debit Air berbanding lurus dengan Ketinggian Air
                 let initDebit = (initTMA * 22) + (Math.random() * 5 - 2.5);
@@ -49,9 +50,9 @@ db.connect((err) => {
                 curahHujan = parseFloat(curahHujan.toFixed(2));
                 
                 let status = 'Aman';
-                if (initTMA >= 3.75) status = 'Awas';
-                else if (initTMA >= 2.50) status = 'Siaga';
-                else if (initTMA >= 1.25) status = 'Waspada';
+                if (initTMA >= 5.00) status = 'Awas';
+                else if (initTMA >= 4.00) status = 'Siaga';
+                else if (initTMA >= 3.00) status = 'Waspada';
 
                 // DATE_SUB digunakan untuk memundurkan jam/waktu agar urutannya pas
                 const query = 'INSERT INTO sensor_logs (ketinggian_air, debit_air, curah_hujan, status, created_at) VALUES (?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL ? SECOND))';
@@ -62,18 +63,19 @@ db.connect((err) => {
     });
 });
 
-// Simpan state sementara (Mulai dari 2.5 meter)
-let currentTMA = 2.50; 
+// Simpan state sementara
+let currentTMA = 2.5; 
 
 // SIMULASI SENSOR: Generate data dummy setiap 15 detik
 setInterval(() => {
     if (currentTMA > 3.5) currentTMA -= (Math.random() * 0.5); // Cepat surut jika tinggi
     else currentTMA += (Math.random() * 0.4 - 0.2); // Fluktuasi normal
     
-    if (Math.random() < 0.15) currentTMA += (Math.random() * 1.5); // 15% peluang hujan deras
+    if (Math.random() < 0.10) currentTMA += (Math.random() * 1.5); // 10% peluang hujan deras (jarang)
+    if (Math.random() < 0.05) currentTMA += (Math.random() * 2.0); // 5% peluang sangat deras (Siaga/Awas)
     
-    if (currentTMA < 2.0) currentTMA = 2.0 + Math.random() * 0.5; // Terendah 2.0 - 2.5 meter
-    if (currentTMA > 5.0) currentTMA = 5.0;
+    if (currentTMA < 2.0) currentTMA = 2.0 + Math.random() * 0.2; // JANGAN DI BAWAH 2 METER
+    if (currentTMA > 6.0) currentTMA = 6.0;
 
     let currentDebit = (currentTMA * 22) + (Math.random() * 5 - 2.5);
     if (currentDebit < 5) currentDebit = 5 + Math.random() * 2;
@@ -86,11 +88,11 @@ setInterval(() => {
     curahHujan = parseFloat(curahHujan.toFixed(2));
 
     let status = 'Aman';
-    if (ketinggianAir >= 3.75) {
+    if (ketinggianAir >= 5.00) {
         status = 'Awas';
-    } else if (ketinggianAir >= 2.50) {
+    } else if (ketinggianAir >= 4.00) {
         status = 'Siaga';
-    } else if (ketinggianAir >= 1.25) {
+    } else if (ketinggianAir >= 3.00) {
         status = 'Waspada';
     }
 
