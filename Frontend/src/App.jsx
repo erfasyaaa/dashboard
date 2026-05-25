@@ -34,9 +34,8 @@ export default function App() {
     return Array.from({ length: 30 }, (_, i) => {
       let rata2 = Math.random() * 1.0 + 2.0; // Rata-rata normal 2.0 - 3.0 meter
       let maks = rata2 + Math.random() * 1.0;
-      if (Math.random() < 0.10) maks += Math.random() * 2.5; // Sesekali spike karena hujan (bisa Siaga/Awas)
-      if (maks > 6.0) maks = 6.0; // Batas mentok absolut 6.0 meter
-      
+      if (Math.random() < 0.10) maks += Math.random() * 2.0;
+      if (maks > 5.0) maks = 5.0;
       let status = 'Aman';
       if (maks >= 5.00) status = 'Awas';
       else if (maks >= 4.00) status = 'Siaga';
@@ -65,7 +64,7 @@ export default function App() {
 
   const fetchData = async () => { 
     try { 
-      const response = await fetch(`${API_URL}/api/sensor-data`); 
+      const response = await fetch(`${API_URL}/api/sensor-data?_t=${Date.now()}`); 
       const data = await response.json(); 
       if (data.length > 0) { 
         setDataLogs(data); 
@@ -79,12 +78,12 @@ export default function App() {
       } 
         
         // Fetch Data Mingguan dari Database
-        const resWeekly = await fetch(`${API_URL}/api/sensor-data/weekly`); 
+        const resWeekly = await fetch(`${API_URL}/api/sensor-data/weekly?_t=${Date.now()}`); 
         const dataWeekly = await resWeekly.json(); 
         if (dataWeekly.length > 0) setDataGrafikMingguan(dataWeekly); 
 
         // Fetch Data Bulanan dari Database
-        const resMonthly = await fetch(`${API_URL}/api/sensor-data/monthly`); 
+        const resMonthly = await fetch(`${API_URL}/api/sensor-data/monthly?_t=${Date.now()}`); 
         const dataMonthly = await resMonthly.json(); 
         if (dataMonthly.length > 0) setDataTabelBulanan(dataMonthly); 
     } catch (error) { 
@@ -93,15 +92,15 @@ export default function App() {
       setLatestData(prev => {
         let newTMA = prev.ketinggian_air;
         
-        // Mayoritas di 2.0 - 4.0 meter (Aman/Waspada)
-        if (newTMA > 3.5) newTMA -= (Math.random() * 0.5); 
+        // Logika fallback distabilkan agar banyak Aman & Waspada
+        if (newTMA > 3.5) newTMA -= (Math.random() * 0.5 + 0.1); 
         else newTMA += (Math.random() * 0.4 - 0.2); 
         
-        if (Math.random() < 0.10) newTMA += (Math.random() * 1.5); // Peluang Siaga
-        if (Math.random() < 0.05) newTMA += (Math.random() * 2.0); // Peluang Awas
+        if (Math.random() < 0.15) newTMA += (Math.random() * 0.8);
+        if (Math.random() < 0.02) newTMA += (Math.random() * 1.2);
         
-        if (newTMA < 2.0) newTMA = 2.0 + Math.random() * 0.2; // JANGAN DI BAWAH 2 METER
-        if (newTMA > 6.0) newTMA = 6.0;
+        if (newTMA < 2.0) newTMA = 2.0 + Math.random() * 0.1; // Minimal 2
+        if (newTMA > 5.0) newTMA = 5.0; // Maksimal batas 5
 
         let status = 'Aman';
         if (newTMA >= 5.00) status = 'Awas';
@@ -136,7 +135,7 @@ export default function App() {
 
   useEffect(() => { 
     fetchData(); 
-    const interval = setInterval(fetchData, 15000); 
+    const interval = setInterval(fetchData, 5000); 
     return () => clearInterval(interval); 
   }, []); 
 
