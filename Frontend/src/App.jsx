@@ -1,6 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react'; 
+import React, { useState, useEffect } from 'react'; 
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, LineChart, Line } from 'recharts'; 
 import cctvImage from './assets/sungai code.png'; 
+
+// Base URL untuk backend (VITE_API_URL ini nanti diisi domain Render di Vercel)
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function App() { 
   const [dataLogs, setDataLogs] = useState([]); 
@@ -12,10 +15,10 @@ export default function App() {
   }); 
   const [tableType, setTableType] = useState('realtime');
   const [activePage, setActivePage] = useState('dashboard'); 
-  const [scale, setScale] = useState(1); 
+  const [scale, setScale] = useState({ x: 1, y: 1 }); 
 
-  // Data dummy 7 hari untuk grafik (biar baloknya tetap gendut & rapi)
-  const dataGrafikMingguan = [ 
+  // State Grafik Mingguan (Fallback otomatis dipakai jika MySQL gagal / terputus)
+  const [dataGrafikMingguan, setDataGrafikMingguan] = useState([ 
     { hari: 'Sen', tinggi_rata2: 2.2, tinggi_maks: 3.1 }, 
     { hari: 'Sel', tinggi_rata2: 2.1, tinggi_maks: 2.5 }, 
     { hari: 'Rab', tinggi_rata2: 2.5, tinggi_maks: 3.8 }, 
@@ -23,10 +26,10 @@ export default function App() {
     { hari: 'Jum', tinggi_rata2: 2.8, tinggi_maks: 3.5 }, 
     { hari: 'Sab', tinggi_rata2: 2.3, tinggi_maks: 2.9 }, 
     { hari: 'Min', tinggi_rata2: 2.0, tinggi_maks: 2.4 }, 
-  ]; 
+  ]); 
 
-  // Data dummy 30 hari untuk tabel riwayat saat diklik
-  const dataTabelBulanan = useMemo(() => {
+  // State Tabel Bulanan
+  const [dataTabelBulanan, setDataTabelBulanan] = useState(() => {
     const today = new Date();
     return Array.from({ length: 30 }, (_, i) => {
       let rata2 = Math.random() * 1.0 + 2.0; // Rata-rata normal 2.0 - 3.0 meter
@@ -58,11 +61,11 @@ export default function App() {
         status: status
       };
     });
-  }, []);
+  });
 
   const fetchData = async () => { 
     try { 
-      const response = await fetch('http://localhost:5000/api/sensor-data'); 
+      const response = await fetch(`${API_URL}/api/sensor-data`); 
       const data = await response.json(); 
       if (data.length > 0) { 
         setDataLogs(data); 
@@ -74,6 +77,16 @@ export default function App() {
           status: lastRecord.status || 'Aman' 
         }); 
       } 
+        
+        // Fetch Data Mingguan dari Database
+        const resWeekly = await fetch(`${API_URL}/api/sensor-data/weekly`); 
+        const dataWeekly = await resWeekly.json(); 
+        if (dataWeekly.length > 0) setDataGrafikMingguan(dataWeekly); 
+
+        // Fetch Data Bulanan dari Database
+        const resMonthly = await fetch(`${API_URL}/api/sensor-data/monthly`); 
+        const dataMonthly = await resMonthly.json(); 
+        if (dataMonthly.length > 0) setDataTabelBulanan(dataMonthly); 
     } catch (error) { 
       console.warn('Backend tidak terhubung, menjalankan simulasi indikator lokal...'); 
       
@@ -131,7 +144,7 @@ export default function App() {
     const handleResize = () => { 
       const scaleX = window.innerWidth / 1920; 
       const scaleY = window.innerHeight / 1080; 
-      setScale(Math.min(scaleX, scaleY)); 
+      setScale({ x: scaleX, y: scaleY }); 
     }; 
     handleResize(); 
     setTimeout(() => { 
@@ -187,10 +200,10 @@ export default function App() {
   };
 
   return ( 
-    <div className="w-screen h-screen flex items-center justify-center bg-slate-900 overflow-auto"> 
+    <div className="w-screen h-screen flex items-center justify-center bg-slate-900 overflow-hidden"> 
       <div 
         className="w-[1920px] h-[1080px] relative bg-gradient-to-b from-cyan-700 via-teal-400 via-[73%] to-green-200 overflow-hidden shadow-2xl shrink-0" 
-        style={{ transform: `scale(${scale})`, transformOrigin: 'center' }} 
+        style={{ transform: `scale(${scale.x}, ${scale.y})`, transformOrigin: 'center' }} 
       > 
         <style> 
           {`@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;700&display=swap');`} 

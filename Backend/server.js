@@ -6,12 +6,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Konfigurasi koneksi MySQL ke XAMPP
+// Konfigurasi koneksi MySQL dinamis (Bisa baca Localhost maupun Cloud)
 const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: '', // Default XAMPP dikosongkan
-    database: 'db_monitoring'
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '', 
+    database: process.env.DB_NAME || 'db_monitoring',
+    port: process.env.DB_PORT || 3306
 });
 
 db.connect((err) => {
@@ -28,9 +29,34 @@ db.connect((err) => {
         } else {
             console.log('Tabel sensor_logs berhasil dibersihkan (reset data lama).');
             
-            // Inisialisasi 20 data awal
+            // Inisialisasi 30 data harian ke belakang (Untuk grafik mingguan & tabel bulanan)
             let initTMA = 2.5; 
-            for (let i = 20; i > 0; i--) {
+            for (let i = 30; i > 0; i--) {
+                if (initTMA > 3.5) initTMA -= (Math.random() * 0.5); 
+                else initTMA += (Math.random() * 0.4 - 0.2); 
+                if (Math.random() < 0.10) initTMA += (Math.random() * 1.5); 
+                if (Math.random() < 0.05) initTMA += (Math.random() * 2.0); 
+                if (initTMA < 2.0) initTMA = 2.0 + Math.random() * 0.2; 
+                if (initTMA > 6.0) initTMA = 6.0; 
+
+                let initDebit = (initTMA * 22) + (Math.random() * 5 - 2.5);
+                if (initDebit < 5) initDebit = 5 + Math.random() * 2;
+
+                let curahHujan = (initTMA * 12) + (Math.random() * 8 - 4);
+                if (curahHujan < 0) curahHujan = 0;
+                curahHujan = parseFloat(curahHujan.toFixed(2));
+                
+                let status = 'Aman';
+                if (initTMA >= 5.00) status = 'Awas';
+                else if (initTMA >= 4.00) status = 'Siaga';
+                else if (initTMA >= 3.00) status = 'Waspada';
+
+                const query = 'INSERT INTO sensor_logs (ketinggian_air, debit_air, curah_hujan, status, created_at) VALUES (?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL ? DAY))';
+                db.query(query, [initTMA.toFixed(2), initDebit.toFixed(2), curahHujan, status, i]);
+            }
+
+            // Inisialisasi 50 data detik awal hari ini (Diperbesar ke 50 agar chart garis real-time terpenuhi)
+            for (let i = 50; i > 0; i--) {
                 // Mayoritas di 2.0 - 4.0 meter
                 if (initTMA > 3.5) initTMA -= (Math.random() * 0.5); // Cepat surut jika tinggi
                 else initTMA += (Math.random() * 0.4 - 0.2); // Fluktuasi normal
@@ -58,7 +84,7 @@ db.connect((err) => {
                 const query = 'INSERT INTO sensor_logs (ketinggian_air, debit_air, curah_hujan, status, created_at) VALUES (?, ?, ?, ?, DATE_SUB(NOW(), INTERVAL ? SECOND))';
                 db.query(query, [initTMA.toFixed(2), initDebit.toFixed(2), curahHujan, status, i * 15]);
             }
-            console.log('20 data riwayat awal berhasil ditambahkan!');
+            console.log('Data riwayat 30 hari & 50 data detik awal berhasil ditambahkan!');
         }
     });
 });
@@ -123,7 +149,61 @@ app.get('/api/sensor-data', (req, res) => {
     });
 });
 
-const PORT = 5000;
+// ENDPOINT: Ambil data mingguan (7 Hari Terakhir dari MySQL)
+app.get('/api/sensor-data/weekly', (req, res) => {
+    const query = `
+        SELECT 
+            DATE(created_at) as raw_date,
+            ROUND(AVG(ketinggian_air), 2) as tinggi_rata2,
+            ROUND(MAX(ketinggian_air), 2) as tinggi_maks
+        FROM sensor_logs
+        WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+        GROUP BY DATE(created_at)
+        ORDER BY DATE(created_at) ASC
+    `;
+    db.query(query, (err, results) => {
+        if (err) return res.status(500).json({ error: err.message });
+        const daysMap = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+        const mapped = results.map(r => {
+            const d = new Date(r.raw_date);
+            return { hari: daysMap[d.getDay()], tinggi_rata2: r.tinggi_rata2, tinggi_maks: r.tinggi_maks };
+        });
+        res.json(mapped);
+    });
+});
+
+// ENDPOINT: Ambil data bulanan (30 Hari Terakhir dari MySQL)
+app.get('/api/sensor-data/monthly', (req, res) => {
+    const query = `
+        SELECT 
+            DATE(created_at) as raw_date,
+            ROUND(AVG(ketinggian_air), 2) as tinggi_rata2,
+            ROUND(MAX(ketinggian_air), 2) as tinggi_maks,
+            ROUND(AVG(debit_air), 2) as debit_rata2,
+            ROUND(AVG(curah_hujan), 2) as curah_hujan,
+            MAX(ketinggian_air) as max_ketinggian
+        FROM sensor_logs
+        WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)
+        GROUP BY DATE(created_at)
+        ORDER BY DATE(created_at) DESC
+    `;
+    db.query(query, (err, results) => {
+        if (err) return res.status(500).json({ error: err.message });
+        const mapped = results.map(r => {
+            let status = 'Aman';
+            if (r.max_ketinggian >= 5.00) status = 'Awas';
+            else if (r.max_ketinggian >= 4.00) status = 'Siaga';
+            else if (r.max_ketinggian >= 3.00) status = 'Waspada';
+            
+            const d = new Date(r.raw_date);
+            const tanggalFormat = d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
+            return { hari: tanggalFormat, tinggi_rata2: r.tinggi_rata2, tinggi_maks: r.tinggi_maks, debit_rata2: r.debit_rata2, curah_hujan: r.curah_hujan, status: status };
+        });
+        res.json(mapped);
+    });
+});
+
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Backend berjalan di http://localhost:${PORT}`);
 });
